@@ -21,7 +21,6 @@ app.add_middleware(
 )
 
 
-# ---------------------- Core Logic ---------------------- #
 def fetch_all_records():
     """Fetch all lessons from the database API."""
     url = f"{BASE_URL}{RECORDS_ENDPOINT}"
@@ -84,7 +83,6 @@ def semantic_search(records, query: str):
     return matches
 
 
-# ---------------------- API Routes ---------------------- #
 
 @app.get("/")
 def home():
@@ -110,3 +108,4 @@ def search_lessons(query: str = Query(..., description="Type your natural langua
         "count": len(results),
         "results": results[:20] 
     }
+
