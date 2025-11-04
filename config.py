@@ -1,10 +1,17 @@
-# Configuration file for API settings
-
 BASE_URL = "https://sysprosystembackend-develop-hybyc7adhkh4cgfy.eastus-01.azurewebsites.net/"
-RECORDS_ENDPOINT = "/api/v1/Issue"
+RECORDS_ENDPOINT = "/api/v1/Transactions"
 
-# Authentication headers 
-AUTH_HEADERS = {
-    "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkhTMjNiN0RvN1RjYVUxUm9MSHdwSXEyNFZZZyIsImtpZCI6IkhTMjNiN0RvN1RjYVUxUm9MSHdwSXEyNFZZZyJ9.eyJhdWQiOiJhcGk6Ly9hYmE2OGY3NC0xOThjLTQyNzEtYmJiMS04MzMxNjg4YjRhMDkiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC8zZDFkODE1ZS01MzQ2LTQyNDQtOWY3Yi02MmI3OGZiNzQyYjEvIiwiaWF0IjoxNzYwNDY0MzQ4LCJuYmYiOjE3NjA0NjQzNDgsImV4cCI6MTc2MDQ2OTY2MCwiYWNyIjoiMSIsImFpbyI6IkFVUUF1LzhhQUFBQU50VFJmcDlNTE14MGY1aHdYc0h5S24rcWtGUTZ1SkkvcEFxTURVU0s1OTdiZ0w2OTQ0YWc3NXdpbGZTMHZuWE8zZnZ4N1BjYmhvRkx6UFVoeTM0V1NBPT0iLCJhbXIiOlsicHdkIl0sImFwcGlkIjoiOWRhZTE4YTYtNTY3ZC00NTU1LTlkY2UtMmM1MGEzYWQzZWNmIiwiYXBwaWRhY3IiOiIwIiwiZmFtaWx5X25hbWUiOiJSb29tIiwiZ2l2ZW5fbmFtZSI6IkNvbmZlcmVuY2UiLCJpcGFkZHIiOiIxMDIuODguMTA5LjM2IiwibmFtZSI6IkNvbmZlcmVuY2UgUm9vbSIsIm9pZCI6ImFmNDMyMjYxLWZmYTItNDZmZC04ZTQxLTdhNzBmMTYwZjc3OCIsIm9ucHJlbV9zaWQiOiJTLTEtNS0yMS0xMDU0NTM0MDU0LTMwMTgyNTYxNzEtMzUzMzY5NTI1My0yNjA4IiwicmgiOiIxLkFTRUFYb0VkUFVaVFJFS2ZlMkszajdkQ3NYU1BwcXVNR1hGQ3U3R0RNV2lMU2dsRkFSY2hBQS4iLCJyb2xlcyI6WyJVc2VyIl0sInNjcCI6IkdyYW50LkFQSS5BY2Nlc3MiLCJzaWQiOiIwMDlhYzE0OS1hNTFmLWM3MjItMzc2NS04NzNlYjk5NjUzMDMiLCJzdWIiOiJWSmxTRlNiMXRNOVRqNUUxNnVlX3NGeFFfT0d1andhbmxPbkt0WFhnUkEwIiwidGlkIjoiM2QxZDgxNWUtNTM0Ni00MjQ0LTlmN2ItNjJiNzhmYjc0MmIxIiwidW5pcXVlX25hbWUiOiJjb25mZXJlbmNlcm9vbUBpbmZyYWNyZWRpdC5uZyIsInVwbiI6ImNvbmZlcmVuY2Vyb29tQGluZnJhY3JlZGl0Lm5nIiwidXRpIjoiVFdlaklWV0xma3UwYzVibFFnb1FBQSIsInZlciI6IjEuMCIsInhtc19mdGQiOiJsMWlXdGZCeXg3Q0wyNzRUS3BCeVdLMFFrbXhtaTVqUDI5V1hNRnQ1LXRvQlpYVnliM0JsZDJWemRDMWtjMjF6In0.Y_zhAe2wBNJP3fERjtJR0s9V5uUkTkmzdQIR-mTtJZ3zVMAvKtPaV26v13onDo5l18tD8oIOrDo1Tk97nSLmpjVxqYptr3NysnzyGr7mksi39Gs2IefQ1gPn1yP_tsoMsZYWjzFFeejO6rjPHROfCm1RMWD62ih14f5cp66qMk1-GR83GjdJd6Wg3gb3VyZ-8Y-ApKIkcL7bJH2JTrQyeGjMMmpQ7Q96_cSdJNy9hTX_EKDGI--9qqOkNas3_xC5uOlQ-CxrR-sgPtlRwJu5XZcAFPIe-F1Zdj3hral48GCtiGXo--OB_reJPjWXef8OdZyGR7eTips5hpLRDav9Kw",
-     "Content-Type": "application/json",
-}
+def get_auth_headers(token: str):
+    """
+    Dynamically generate request headers with the user's Bearer token.
+
+    Args:
+        token (str): User's authentication token from the frontend
+
+    Returns:
+        dict: Authorization header dictionary
+    """
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
