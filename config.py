@@ -15,3 +15,4 @@ def get_auth_headers(token: str):
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+
