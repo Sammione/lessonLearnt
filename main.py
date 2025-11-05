@@ -9,7 +9,7 @@ from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
 app = FastAPI(
     title="LUAN – Infracredit AI Lesson Learnt API",
     description="FastAPI backend for fetching and searching Lesson Learnt records.",
-    version="1.0.0"
+    version="1.0.1"
 )
 
 # ---------------------- CORS Configuration ----------------------
@@ -35,7 +35,7 @@ def preprocess_query(query: str):
         "please", "can", "you", "display", "client", "sector", "counter-party",
         "counter", "party"
     ]
-    return [w for w in re.findall(r'\w+', query) if w not in stopwords]
+    return [w for w in re.findall(r'\w+', query) if w not in stopwords and len(w) > 2]
 
 
 def clean_html(raw_text):
@@ -46,7 +46,7 @@ def clean_html(raw_text):
 
 
 def fetch_all_records(token: str):
-    """Fetch all records across pages using user token."""
+    """Fetch all transaction records across pages using user token."""
     all_results = []
     page = 1
     total_pages = 1
@@ -54,38 +54,46 @@ def fetch_all_records(token: str):
     print("\nFetching records across pages...")
 
     while page <= total_pages:
-        url = f"{BASE_URL}{RECORDS_ENDPOINT}?page={page}"
+        url = f"{BASE_URL.rstrip('/')}{RECORDS_ENDPOINT}?page={page}"
         headers = get_auth_headers(token)
 
         try:
             response = requests.get(url, headers=headers, timeout=20)
+            print(f"Fetching page {page} → Status {response.status_code}")
+
             if response.status_code == 401:
                 raise HTTPException(status_code=401, detail="Invalid or expired token.")
             response.raise_for_status()
-            data = response.json()
 
-            # Flexible parsing for different response structures
+            data = response.json()
+            print(f"Raw data keys: {list(data.keys())}")
+
+            # --- Adjust this section to your API structure ---
             if isinstance(data, dict):
-                if "data" in data and isinstance(data["data"], dict):
-                    results = data["data"].get("result") or data["data"].get("results") or []
-                    total_pages = data["data"].get("totalPages") or data["data"].get("total_pages") or total_pages
-                elif "results" in data:
-                    results = data.get("results", [])
-                    total_pages = data.get("totalPages") or data.get("total_pages") or total_pages
-                elif isinstance(data.get("data"), list):
-                    results = data["data"]
+                if "data" in data:
+                    inner = data["data"]
+                    if isinstance(inner, dict):
+                        results = inner.get("result") or inner.get("results") or inner.get("items") or []
+                        total_pages = inner.get("totalPages") or inner.get("total_pages") or 1
+                    elif isinstance(inner, list):
+                        results = inner
+                        total_pages = 1
+                    else:
+                        results = []
                 else:
-                    results = data if isinstance(data, list) else []
+                    results = data.get("results", []) or []
+                    total_pages = data.get("totalPages", 1)
             else:
                 results = []
 
             if not results:
+                print(f"No results on page {page}. Stopping.")
                 break
 
             # Clean HTML fields
             for r in results:
                 for field in ["title", "details", "lessonLearnt", "typeDescription"]:
-                    if field in r:
+                    if field in r and isinstance(r[field], str):
                         r[field] = clean_html(r[field])
 
             all_results.extend(results)
@@ -95,6 +103,7 @@ def fetch_all_records(token: str):
             print(f"Error fetching page {page}: {e}")
             break
 
+    print(f"Total records fetched: {len(all_results)}")
     return all_results
 
 
@@ -136,7 +145,7 @@ def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
     return {"total": len(records), "records": records}
 
 
-# ---------------------- Search Endpoint (POST Body Version) ----------------------
+# ---------------------- Search Endpoint ----------------------
 class SearchRequest(BaseModel):
     query: str
 
@@ -159,13 +168,13 @@ def search_records_body(
 
     for r in records:
         combined_text = " ".join([
-            str(r.get("title", "") or ""),
-            str(r.get("details", "") or ""),
-            str(r.get("lessonLearnt", "") or ""),
-            str(r.get("typeDescription", "") or ""),
-            str(r.get("consultantTransaction", {}).get("transactionName", "") or ""),
-            str(r.get("consultantTransaction", {}).get("portfolioName", "") or ""),
-            str(r.get("consultantTransaction", {}).get("sector", "") or "")
+            str(r.get("title", "")),
+            str(r.get("details", "")),
+            str(r.get("lessonLearnt", "")),
+            str(r.get("typeDescription", "")),
+            str(r.get("consultantTransaction", {}).get("transactionName", "")),
+            str(r.get("consultantTransaction", {}).get("portfolioName", "")),
+            str(r.get("consultantTransaction", {}).get("sector", ""))
         ]).lower()
 
         if any(k in combined_text for k in keywords):
@@ -177,3 +186,14 @@ def search_records_body(
         "total_matches": len(matches),
         "results": matches
     }
+
+
+# ---------------------- Optional GET Version (for frontend) ----------------------
+@app.get("/search")
+def search_records_query(
+    q: str = Query(..., alias="query"),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Search via URL query param, e.g., /search?query=energy"""
+    request = SearchRequest(query=q)
+    return search_records_body(request, credentials)
