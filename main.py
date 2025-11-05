@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 import requests
 import re
 from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
@@ -135,13 +136,19 @@ def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
     return {"total": len(records), "records": records}
 
 
-@app.get("/search")
-def search_records(
-    query: str = Query(..., description="Enter search keywords (e.g., 'Pirano Energy risk issues')"),
+# ---------------------- Search Endpoint (POST Body Version) ----------------------
+class SearchRequest(BaseModel):
+    query: str
+
+
+@app.post("/search")
+def search_records_body(
+    request: SearchRequest,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Search for lessons or issues by keyword."""
+    """Search for lessons or issues by keyword (using JSON body input)."""
     token = credentials.credentials
+    query = request.query
     keywords = preprocess_query(query)
 
     if not keywords:
