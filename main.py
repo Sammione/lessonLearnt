@@ -9,13 +9,13 @@ from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
 app = FastAPI(
     title="LUAN – Infracredit AI Lesson Learnt API",
     description="FastAPI backend for fetching and searching Lesson Learnt records.",
-    version="1.0.2"
+    version="1.0.3"
 )
 
 # ---------------------- CORS Configuration ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace * with your frontend domain if needed
+    allow_origins=["*"],  # Replace * with frontend domain if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,7 +45,7 @@ def clean_html(raw_text):
 
 
 def fetch_all_records(token: str):
-    """Fetch all transaction records across pages using user token."""
+    """Fetch all transaction records from API."""
     all_results = []
     page = 1
     total_pages = 1
@@ -65,31 +65,19 @@ def fetch_all_records(token: str):
             response.raise_for_status()
 
             data = response.json()
-            print(f"Raw data keys: {list(data.keys())}")
-
-            # --- Adjust this section to your API structure ---
-            if isinstance(data, dict):
-                if "data" in data:
-                    inner = data["data"]
-                    if isinstance(inner, dict):
-                        results = inner.get("result") or inner.get("results") or inner.get("items") or []
-                        total_pages = inner.get("totalPages") or inner.get("total_pages") or 1
-                    elif isinstance(inner, list):
-                        results = inner
-                        total_pages = 1
-                    else:
-                        results = []
-                else:
-                    results = data.get("results", []) or []
-                    total_pages = data.get("totalPages", 1)
+            # Your API likely returns a list directly or a dict with `data` or `items`
+            if isinstance(data, list):
+                results = data
+                total_pages = 1
+            elif isinstance(data, dict):
+                results = data.get("data") or data.get("items") or data.get("results") or []
+                total_pages = data.get("totalPages") or data.get("total_pages") or 1
             else:
                 results = []
 
             if not results:
-                print(f"No results on page {page}. Stopping.")
                 break
 
-            # Clean HTML fields
             for r in results:
                 for field in ["title", "details", "lessonLearnt", "typeDescription"]:
                     if field in r and isinstance(r[field], str):
@@ -102,13 +90,12 @@ def fetch_all_records(token: str):
             print(f"Error fetching page {page}: {e}")
             break
 
-    print(f"Total records fetched: {len(all_results)}")
+    print(f"✅ Total records fetched: {len(all_results)}")
     return all_results
 
 
-# ---------------------- Bot Welcome Function ----------------------
+# ---------------------- Bot Welcome Message ----------------------
 def lesson_bot():
-    """Interactive bot welcome message."""
     return {
         "title": "Hi, I’m LUAN — Infracredit’s AI Lesson Learnt Bot.",
         "intro": "Ask me things like:",
@@ -123,19 +110,17 @@ def lesson_bot():
 # ---------------------- API Endpoints ----------------------
 @app.get("/")
 def root():
-    """Root endpoint for API health/status."""
     return {"message": "Welcome to LUAN — Infracredit’s AI Lesson Learnt API"}
 
 
 @app.get("/bot-welcome")
 def bot_welcome():
-    """Endpoint for bot frontend to display welcome message when opened."""
     return {"welcome": lesson_bot()}
 
 
 @app.get("/records")
 def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Fetch all records using the user's token."""
+    """Fetch all records using user's Bearer token."""
     token = credentials.credentials
     records = fetch_all_records(token)
 
@@ -145,16 +130,12 @@ def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 
 # ---------------------- Search Endpoint ----------------------
-class SearchRequest(BaseModel):
-    query: str
-
-
 @app.get("/search")
 def search_records(
     query: str = Query(..., description="Search by project, portfolio, or sector name"),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Search records using query string (for Postman or frontend GET calls)."""
+    """Search transaction records by keyword (case-insensitive)."""
     token = credentials.credentials
     keywords = preprocess_query(query)
 
@@ -165,18 +146,23 @@ def search_records(
     matches = []
 
     for r in records:
+        transaction = r.get("consultantTransaction", {})
         combined_text = " ".join([
+            str(transaction.get("portfolioName", "")),
+            str(transaction.get("transactionName", "")),
+            str(transaction.get("sector", "")),
             str(r.get("title", "")),
             str(r.get("details", "")),
-            str(r.get("lessonLearnt", "")),
-            str(r.get("typeDescription", "")),
-            str(r.get("consultantTransaction", {}).get("transactionName", "")),
-            str(r.get("consultantTransaction", {}).get("portfolioName", "")),
-            str(r.get("consultantTransaction", {}).get("sector", ""))
         ]).lower()
 
         if any(k in combined_text for k in keywords):
-            matches.append(r)
+            matches.append({
+                "portfolioName": transaction.get("portfolioName"),
+                "transactionName": transaction.get("transactionName"),
+                "sector": transaction.get("sector"),
+                "title": r.get("title"),
+                "lessonLearnt": r.get("lessonLearnt")
+            })
 
     if not matches:
         return {"message": f"No records found for '{query}'"}
