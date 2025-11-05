@@ -11,16 +11,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Allow frontend connection
+# ---------------------- CORS Configuration ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to your frontend domain
+    allow_origins=["*"],  # Replace * with your frontend domain if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Security
+# ---------------------- Security ----------------------
 security = HTTPBearer()
 
 
@@ -29,9 +29,10 @@ def preprocess_query(query: str):
     """Extract relevant keywords from user query."""
     query = query.lower()
     stopwords = [
-        "show", "me", "all", "the", "lessons", "learnt", "about", "in", "for", "mitigant",
-        "mitigants", "risk", "issues", "record", "records", "lesson", "please", "can",
-        "you", "display", "client", "sector", "counter-party", "counter", "party"
+        "show", "me", "all", "the", "lessons", "learnt", "about", "in", "for",
+        "mitigant", "mitigants", "risk", "issues", "record", "records", "lesson",
+        "please", "can", "you", "display", "client", "sector", "counter-party",
+        "counter", "party"
     ]
     return [w for w in re.findall(r'\w+', query) if w not in stopwords]
 
@@ -49,7 +50,7 @@ def fetch_all_records(token: str):
     page = 1
     total_pages = 1
 
-    print("\n Fetching records across pages...")
+    print("\nFetching records across pages...")
 
     while page <= total_pages:
         url = f"{BASE_URL}{RECORDS_ENDPOINT}?page={page}"
@@ -57,10 +58,12 @@ def fetch_all_records(token: str):
 
         try:
             response = requests.get(url, headers=headers, timeout=20)
+            if response.status_code == 401:
+                raise HTTPException(status_code=401, detail="Invalid or expired token.")
             response.raise_for_status()
             data = response.json()
 
-            # Flexible parsing
+            # Flexible parsing for different response structures
             if isinstance(data, dict):
                 if "data" in data and isinstance(data["data"], dict):
                     results = data["data"].get("result") or data["data"].get("results") or []
@@ -78,7 +81,7 @@ def fetch_all_records(token: str):
             if not results:
                 break
 
-            # Clean HTML tags
+            # Clean HTML fields
             for r in results:
                 for field in ["title", "details", "lessonLearnt", "typeDescription"]:
                     if field in r:
