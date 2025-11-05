@@ -9,7 +9,7 @@ from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
 app = FastAPI(
     title="LUAN – Infracredit AI Lesson Learnt API",
     description="FastAPI backend for fetching and searching Lesson Learnt records.",
-    version="1.0.1"
+    version="1.0.2"
 )
 
 # ---------------------- CORS Configuration ----------------------
@@ -23,7 +23,6 @@ app.add_middleware(
 
 # ---------------------- Security ----------------------
 security = HTTPBearer()
-
 
 # ---------------------- Utility Functions ----------------------
 def preprocess_query(query: str):
@@ -150,14 +149,13 @@ class SearchRequest(BaseModel):
     query: str
 
 
-@app.post("/search")
-def search_records_body(
-    request: SearchRequest,
+@app.get("/search")
+def search_records(
+    query: str = Query(..., description="Search by project, portfolio, or sector name"),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Search for lessons or issues by keyword (using JSON body input)."""
+    """Search records using query string (for Postman or frontend GET calls)."""
     token = credentials.credentials
-    query = request.query
     keywords = preprocess_query(query)
 
     if not keywords:
@@ -180,20 +178,12 @@ def search_records_body(
         if any(k in combined_text for k in keywords):
             matches.append(r)
 
+    if not matches:
+        return {"message": f"No records found for '{query}'"}
+
     return {
         "query": query,
         "keywords": keywords,
         "total_matches": len(matches),
         "results": matches
     }
-
-
-# ---------------------- Optional GET Version (for frontend) ----------------------
-@app.get("/search")
-def search_records_query(
-    q: str = Query(..., alias="query"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    """Search via URL query param, e.g., /search?query=energy"""
-    request = SearchRequest(query=q)
-    return search_records_body(request, credentials)
