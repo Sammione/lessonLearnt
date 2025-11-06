@@ -9,13 +9,13 @@ from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
 app = FastAPI(
     title="LUAN – Infracredit AI Lesson Learnt API",
     description="FastAPI backend for fetching and searching Lesson Learnt records.",
-    version="1.0.3"
+    version="1.0.4"
 )
 
 # ---------------------- CORS Configuration ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace * with frontend domain if needed
+    allow_origins=["*"],  # You can replace * with your frontend domain if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,7 +65,6 @@ def fetch_all_records(token: str):
             response.raise_for_status()
 
             data = response.json()
-            # Your API likely returns a list directly or a dict with `data` or `items`
             if isinstance(data, list):
                 results = data
                 total_pages = 1
@@ -90,7 +89,7 @@ def fetch_all_records(token: str):
             print(f"Error fetching page {page}: {e}")
             break
 
-    print(f"✅ Total records fetched: {len(all_results)}")
+    print(f"Total records fetched: {len(all_results)}")
     return all_results
 
 
@@ -132,36 +131,44 @@ def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
 # ---------------------- Search Endpoint ----------------------
 @app.get("/search")
 def search_records(
-    query: str = Query(..., description="Search by project, portfolio, or sector name"),
+    query: str = Query(..., description="Search by portfolio name, sector, project type, title, or description"),
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    """Search transaction records by keyword (case-insensitive)."""
+    """Search transaction records by keyword (case-insensitive) across key fields."""
     token = credentials.credentials
     keywords = preprocess_query(query)
 
     if not keywords:
         raise HTTPException(status_code=400, detail="No valid keywords found in your query.")
 
+    # Fetch all records
     records = fetch_all_records(token)
     matches = []
 
     for r in records:
         transaction = r.get("consultantTransaction", {})
+
+        # Combine all searchable fields
         combined_text = " ".join([
             str(transaction.get("portfolioName", "")),
-            str(transaction.get("transactionName", "")),
             str(transaction.get("sector", "")),
+            str(transaction.get("projectType", "")),
             str(r.get("title", "")),
+            str(r.get("typeDescription", "")),
+            str(r.get("lessonLearnt", "")),
             str(r.get("details", "")),
         ]).lower()
 
+        # Check if any keyword matches
         if any(k in combined_text for k in keywords):
             matches.append({
                 "portfolioName": transaction.get("portfolioName"),
-                "transactionName": transaction.get("transactionName"),
                 "sector": transaction.get("sector"),
+                "projectType": transaction.get("projectType"),
                 "title": r.get("title"),
-                "lessonLearnt": r.get("lessonLearnt")
+                "typeDescription": r.get("typeDescription"),
+                "lessonLearnt": r.get("lessonLearnt"),
+                "details": r.get("details")
             })
 
     if not matches:
