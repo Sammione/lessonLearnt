@@ -1,97 +1,112 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
 import requests
 import re
-from config import BASE_URL, RECORDS_ENDPOINT, get_auth_headers
+from config import BASE_URL, RECORDS_ENDPOINT
 
 app = FastAPI(
     title="LUAN – Infracredit AI Lesson Learnt API",
     description="FastAPI backend for fetching and searching Lesson Learnt records.",
-    version="1.0.4"
+    version="1.0.9"
 )
 
 # ---------------------- CORS Configuration ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can replace * with your frontend domain if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------------------- Security ----------------------
-security = HTTPBearer()
-
 # ---------------------- Utility Functions ----------------------
 def preprocess_query(query: str):
-    """Extract relevant keywords from user query."""
     query = query.lower()
     stopwords = [
         "show", "me", "all", "the", "lessons", "learnt", "about", "in", "for",
         "mitigant", "mitigants", "risk", "issues", "record", "records", "lesson",
         "please", "can", "you", "display", "client", "sector", "counter-party",
-        "counter", "party"
+        "counter", "party", "tell", "give", "list"
     ]
     return [w for w in re.findall(r'\w+', query) if w not in stopwords and len(w) > 2]
 
-
 def clean_html(raw_text):
-    """Remove HTML tags from text."""
     if not isinstance(raw_text, str):
         return raw_text
     return re.sub(r"<.*?>", "", raw_text).strip()
 
+def extract_records(data):
+    """
+    Recursively search for a list of dicts (records) in API response.
+    """
+    if isinstance(data, list):
+        if all(isinstance(i, dict) for i in data):
+            return data
+        return []
+    elif isinstance(data, dict):
+        for v in data.values():
+            result = extract_records(v)
+            if result:
+                return result
+    return []
 
 def fetch_all_records(token: str):
-    """Fetch all transaction records from API."""
+    """Fetch all records using token. Tries both 'token' and 'Authorization: Bearer <token>'."""
     all_results = []
     page = 1
     total_pages = 1
 
-    print("\nFetching records across pages...")
-
     while page <= total_pages:
         url = f"{BASE_URL.rstrip('/')}{RECORDS_ENDPOINT}?page={page}"
-        headers = get_auth_headers(token)
 
-        try:
-            response = requests.get(url, headers=headers, timeout=20)
-            print(f"Fetching page {page} → Status {response.status_code}")
+        # Try both header types
+        headers_options = [
+            {"token": token, "Content-Type": "application/json"},
+            {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        ]
 
-            if response.status_code == 401:
-                raise HTTPException(status_code=401, detail="Invalid or expired token.")
-            response.raise_for_status()
+        response = None
+        for headers in headers_options:
+            try:
+                response = requests.get(url, headers=headers, timeout=20)
+                if response.status_code == 200:
+                    break  # success
+            except Exception as e:
+                print(f"Request failed with headers {headers}: {e}")
+                continue
 
-            data = response.json()
-            if isinstance(data, list):
-                results = data
-                total_pages = 1
-            elif isinstance(data, dict):
-                results = data.get("data") or data.get("items") or data.get("results") or []
-                total_pages = data.get("totalPages") or data.get("total_pages") or 1
-            else:
-                results = []
+        if response is None or response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code if response else 500,
+                detail="Failed to fetch records. Token may be invalid or expired."
+            )
 
-            if not results:
-                break
+        data = response.json()
+        print(f"Raw API response (page {page}): {data}")
 
-            for r in results:
-                for field in ["title", "details", "lessonLearnt", "typeDescription"]:
-                    if field in r and isinstance(r[field], str):
-                        r[field] = clean_html(r[field])
-
-            all_results.extend(results)
-            page += 1
-
-        except Exception as e:
-            print(f"Error fetching page {page}: {e}")
+        results = extract_records(data)
+        if not results:
+            print(f"No records found on page {page}")
             break
 
-    print(f"Total records fetched: {len(all_results)}")
-    return all_results
+        # Try to get total pages if available
+        if isinstance(data, dict):
+            total_pages = data.get("totalPages") or data.get("total_pages") or 1
 
+        # Clean HTML fields
+        for r in results:
+            for field in ["title", "details", "lessonLearnt", "typeDescription"]:
+                if field in r and isinstance(r[field], str):
+                    r[field] = clean_html(r[field])
+
+        all_results.extend(results)
+        page += 1
+
+    print(f"Total records fetched: {len(all_results)}")
+    if all_results:
+        print("Sample record keys:", all_results[0].keys())
+
+    return all_results
 
 # ---------------------- Bot Welcome Message ----------------------
 def lesson_bot():
@@ -105,71 +120,55 @@ def lesson_bot():
         ]
     }
 
-
 # ---------------------- API Endpoints ----------------------
 @app.get("/")
 def root():
     return {"message": "Welcome to LUAN — Infracredit’s AI Lesson Learnt API"}
 
-
 @app.get("/bot-welcome")
-def bot_welcome():
+def bot_welcome(token: str = Header(..., description="User login token")):
+    """Return welcome message with examples."""
     return {"welcome": lesson_bot()}
 
-
 @app.get("/records")
-def get_records(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Fetch all records using user's Bearer token."""
-    token = credentials.credentials
+def get_records(token: str = Header(..., description="Access token for authentication")):
+    """Fetch all records using user's token in header."""
     records = fetch_all_records(token)
-
     if not records:
         raise HTTPException(status_code=404, detail="No records found.")
     return {"total": len(records), "records": records}
 
-
-# ---------------------- Search Endpoint ----------------------
 @app.get("/search")
 def search_records(
     query: str = Query(..., description="Search by portfolio name, sector, project type, title, or description"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    token: str = Header(..., description="Access token for authentication")
 ):
-    """Search transaction records by keyword (case-insensitive) across key fields."""
-    token = credentials.credentials
+    """Search transaction records by keywords across all fields."""
     keywords = preprocess_query(query)
-
     if not keywords:
         raise HTTPException(status_code=400, detail="No valid keywords found in your query.")
 
-    # Fetch all records
     records = fetch_all_records(token)
     matches = []
 
+    # Recursive function to gather all text from nested dicts/lists
+    def gather_text(d):
+        texts = []
+        if isinstance(d, dict):
+            for v in d.values():
+                texts.extend(gather_text(v))
+        elif isinstance(d, list):
+            for i in d:
+                texts.extend(gather_text(i))
+        elif isinstance(d, str):
+            texts.append(d.lower())
+        return texts
+
     for r in records:
-        transaction = r.get("consultantTransaction", {})
-
-        # Combine all searchable fields
-        combined_text = " ".join([
-            str(transaction.get("portfolioName", "")),
-            str(transaction.get("sector", "")),
-            str(transaction.get("projectType", "")),
-            str(r.get("title", "")),
-            str(r.get("typeDescription", "")),
-            str(r.get("lessonLearnt", "")),
-            str(r.get("details", "")),
-        ]).lower()
-
-        # Check if any keyword matches
-        if any(k in combined_text for k in keywords):
-            matches.append({
-                "portfolioName": transaction.get("portfolioName"),
-                "sector": transaction.get("sector"),
-                "projectType": transaction.get("projectType"),
-                "title": r.get("title"),
-                "typeDescription": r.get("typeDescription"),
-                "lessonLearnt": r.get("lessonLearnt"),
-                "details": r.get("details")
-            })
+        combined_text = " ".join(gather_text(r))
+        # Check if all keywords are present
+        if all(k in combined_text for k in keywords):
+            matches.append(r)
 
     if not matches:
         return {"message": f"No records found for '{query}'"}
